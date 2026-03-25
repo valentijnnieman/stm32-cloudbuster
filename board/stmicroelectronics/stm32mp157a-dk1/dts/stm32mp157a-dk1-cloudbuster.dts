@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
+/*
+ * Cloudbuster custom device tree for STM32MP157A-DK1
+ */
+/dts-v1/;
+#include "stm32mp157a-dk1.dts"
+
+/ {
+	model = "STMicroelectronics STM32MP157A-DK1 Cloudbuster";
+	compatible = "st,stm32mp157a-dk1-cloudbuster", "st,stm32mp157a-dk1", "st,stm32mp157";
+
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		button-user1 {
+			label = "User1";
+			gpios = <&gpioa 14 1>;
+			linux,code = <407>;
+			wakeup-source;
+		};
+
+		button-user2 {
+			label = "User2";
+			gpios = <&gpioa 13 1>;
+			linux,code = <412>;
+			wakeup-source;
+		};
+	};
+};
+
+&adc {
+	pinctrl-0 = <&adc12_usb_cc_pins_a>, <&adc12_ain_pins_a>;
+
+	adc2: adc@100 {
+		channel@6 {
+			reg = <6>;
+			st,min-sample-time-ns = <5000>;
+		};
+	};
+};

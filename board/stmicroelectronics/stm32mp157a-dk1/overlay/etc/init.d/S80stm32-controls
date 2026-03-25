@@ -1,0 +1,23 @@
+#!/bin/sh
+
+case "$1" in
+    start)
+        echo "Starting stm32-controls..."
+        /root/stm32-controls >> /var/log/stm32-controls.log 2>&1 &
+        
+        # Wait indefinitely for cloudbuster to register its MIDI port
+        echo "Waiting for cloudbuster MIDI port..."
+        while true; do
+            if aconnect -l | grep -q "RtMidi Input Client"; then
+                aconnect stm32-controls:0 'RtMidi Input Client':0
+                echo "Connected stm32-controls to cloudbuster"
+                break
+            fi
+            sleep 2
+        done &
+        ;;
+    stop)
+        echo "Stopping stm32-controls..."
+        killall stm32-controls
+        ;;
+esac

@@ -1,0 +1,1 @@
+/home/valentijn/dev/buildroot/output/host/bin/arm-buildroot-linux-uclibcgnueabihf-gcc --sysroot=/home/valentijn/dev/buildroot/output/host/arm-buildroot-linux-uclibcgnueabihf/sysroot "CMakeFiles/stm32-controls.dir/main.c.o" -o stm32-controls  -lasound
