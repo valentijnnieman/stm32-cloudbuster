@@ -1,0 +1,9 @@
+#!/bin/sh
+
+case "$1" in
+    start)
+        echo "Setting up audio..."
+        amixer -c 0 cset numid=2 on,on
+        amixer -c 0 cset numid=21 0
+        ;;
+esac

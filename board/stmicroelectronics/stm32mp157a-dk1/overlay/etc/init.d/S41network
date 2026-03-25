@@ -1,0 +1,13 @@
+#!/bin/sh
+
+case "$1" in
+    start)
+        echo "Starting network..."
+        ip link set eth0 up
+        udhcpc -i eth0 -b
+        ;;
+    stop)
+        echo "Stopping network..."
+        ip link set eth0 down
+        ;;
+esac

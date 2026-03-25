@@ -1,0 +1,23 @@
+#!/bin/sh
+
+LOGFILE=/var/log/cloudbuster.log
+
+case "$1" in
+start)
+	echo "Starting cloudbuster..."
+	/root/run_cloudbuster.sh >>$LOGFILE 2>&1 &
+	echo $! >/var/run/cloudbuster.pid
+	;;
+stop)
+	echo "Stopping cloudbuster..."
+	if [ -f /var/run/cloudbuster.pid ]; then
+		kill $(cat /var/run/cloudbuster.pid)
+		rm /var/run/cloudbuster.pid
+	fi
+	;;
+restart)
+	$0 stop
+	sleep 1
+	$0 start
+	;;
+esac
