@@ -1,0 +1,47 @@
+--- a/arch/arm/boot/dts/st/stm32mp15xx-dkx.dtsi
++++ b/arch/arm/boot/dts/st/stm32mp15xx-dkx.dtsi
+@@ -82,6 +82,24 @@
+ 		status = "okay";
+ 	};
+ 
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		button-user1 {
++			label = "User1";
++			gpios = <&gpioa 14 GPIO_ACTIVE_LOW>;
++			linux,code = <407>;
++			wakeup-source;
++		};
++
++		button-user2 {
++			label = "User2";
++			gpios = <&gpioa 13 GPIO_ACTIVE_LOW>;
++			linux,code = <412>;
++			wakeup-source;
++		};
++	};
++
+ 	vin: vin {
+ 		compatible = "regulator-fixed";
+ 		regulator-name = "vin";
+@@ -93,7 +111,7 @@
+ 
+ &adc {
+ 	pinctrl-names = "default";
+-	pinctrl-0 = <&adc12_usb_cc_pins_a>;
++	pinctrl-0 = <&adc12_usb_cc_pins_a>, <&adc12_ain_pins_a>;
+ 	vdd-supply = <&vdd>;
+ 	vdda-supply = <&vdd>;
+ 	vref-supply = <&vrefbuf>;
+@@ -117,6 +135,10 @@
+ 	};
+ 	adc2: adc@100 {
+ 		status = "okay";
++		channel@6 {
++			reg = <6>;
++			st,min-sample-time-ns = <5000>;
++		};
+ 		/* USB Type-C CC1 & CC2 */
+ 		channel@18 {
+ 			reg = <18>;
