@@ -6,8 +6,6 @@ case "$1" in
         if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
             ssh-keygen -A
         fi
-        echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
-        echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
         /usr/sbin/sshd
         ;;
     stop)

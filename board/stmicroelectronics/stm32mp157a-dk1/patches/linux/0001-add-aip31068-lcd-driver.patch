@@ -1,0 +1,325 @@
+--- a/drivers/auxdisplay/Kconfig
++++ b/drivers/auxdisplay/Kconfig
+@@ -59,6 +59,18 @@
+ 	  is a simple single color character display. You have to connect it
+ 	  to an I2C bus.
+ 
++config AIP31068
++	tristate "AIP31068 I2C LCD display"
++	depends on I2C
++	select CHARLCD
++	help
++	  This enables a driver for AIP31068L based I2C LCD displays
++	  such as the JHD1804. These displays use a native I2C interface
++	  compatible with the HD44780 instruction set.
++
++	  To compile this driver as a module, choose M. The module will
++	  be called aip31068.
++
+ menuconfig PARPORT_PANEL
+ 	tristate "Parallel port LCD/Keypad Panel support"
+ 	depends on PARPORT
+--- a/drivers/auxdisplay/Makefile
++++ b/drivers/auxdisplay/Makefile
+@@ -12,6 +12,7 @@
+ obj-$(CONFIG_IMG_ASCII_LCD)	+= img-ascii-lcd.o
+ obj-$(CONFIG_KS0108)		+= ks0108.o
+ obj-$(CONFIG_LCD2S)		+= lcd2s.o
++obj-$(CONFIG_AIP31068)		+= aip31068.o
+ obj-$(CONFIG_LINEDISP)		+= line-display.o
+ obj-$(CONFIG_MAX6959)		+= max6959.o
+ obj-$(CONFIG_PARPORT_PANEL)	+= panel.o
+--- a/drivers/auxdisplay/aip31068.c
++++ b/drivers/auxdisplay/aip31068.c
+@@ -0,0 +1,291 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Driver for AIP31068L based I2C LCD displays (e.g. JHD1804)
++ * Compatible with HD44780 instruction set via native I2C interface.
++ *
++ * Based on lcd2s.c by Lars Pöschel
++ */
++
++#include <linux/kernel.h>
++#include <linux/mod_devicetable.h>
++#include <linux/module.h>
++#include <linux/property.h>
++#include <linux/slab.h>
++#include <linux/i2c.h>
++#include <linux/delay.h>
++
++#include "charlcd.h"
++
++/* Control bytes */
++#define AIP31068_CTRL_CMD   0x80  /* next byte is a command */
++#define AIP31068_CTRL_DATA  0x40  /* next byte is data */
++
++/* HD44780 commands */
++#define AIP31068_CMD_CLEAR          0x01
++#define AIP31068_CMD_HOME           0x02
++#define AIP31068_CMD_ENTRY_MODE     0x06  /* increment, no shift */
++#define AIP31068_CMD_DISPLAY_ON     0x0C  /* display on, cursor off, blink off */
++#define AIP31068_CMD_DISPLAY_OFF    0x08
++#define AIP31068_CMD_CURSOR_ON      0x0E
++#define AIP31068_CMD_CURSOR_OFF     0x0C
++#define AIP31068_CMD_BLINK_ON       0x0F
++#define AIP31068_CMD_BLINK_OFF      0x0E
++#define AIP31068_CMD_SHIFT_CUR_L    0x10
++#define AIP31068_CMD_SHIFT_CUR_R    0x14
++#define AIP31068_CMD_SHIFT_DISP_L   0x18
++#define AIP31068_CMD_SHIFT_DISP_R   0x1C
++#define AIP31068_CMD_FUNCTION_SET   0x38  /* 8-bit, 2 lines, 5x8 */
++#define AIP31068_CMD_SET_DDRAM      0x80
++
++/* DDRAM row offsets */
++#define AIP31068_ROW0_OFFSET        0x00
++#define AIP31068_ROW1_OFFSET        0x40
++
++struct aip31068_data {
++    struct i2c_client *i2c;
++    struct charlcd *charlcd;
++};
++
++static int aip31068_cmd(struct aip31068_data *priv, u8 cmd)
++{
++    u8 buf[2] = { AIP31068_CTRL_CMD, cmd };
++    int ret;
++
++    ret = i2c_master_send(priv->i2c, buf, sizeof(buf));
++    if (ret < 0)
++        return ret;
++
++    /* Some commands need more time */
++    if (cmd == AIP31068_CMD_CLEAR || cmd == AIP31068_CMD_HOME)
++        mdelay(2);
++    else
++        udelay(50);
++
++    return 0;
++}
++
++static int aip31068_data(struct aip31068_data *priv, u8 data)
++{
++    u8 buf[2] = { AIP31068_CTRL_DATA, data };
++    int ret;
++
++    ret = i2c_master_send(priv->i2c, buf, sizeof(buf));
++    if (ret < 0)
++        return ret;
++
++    udelay(50);
++    return 0;
++}
++
++static int aip31068_print(struct charlcd *lcd, int c)
++{
++    struct aip31068_data *priv = lcd->drvdata;
++
++    return aip31068_data(priv, (u8)c);
++}
++
++static int aip31068_gotoxy(struct charlcd *lcd, unsigned int x, unsigned int y)
++{
++    struct aip31068_data *priv = lcd->drvdata;
++    u8 row_offsets[] = { AIP31068_ROW0_OFFSET, AIP31068_ROW1_OFFSET };
++    u8 addr;
++
++    if (y >= 2)
++        y = 1;
++
++    addr = AIP31068_CMD_SET_DDRAM | (row_offsets[y] + x);
++    return aip31068_cmd(priv, addr);
++}
++
++static int aip31068_home(struct charlcd *lcd)
++{
++    struct aip31068_data *priv = lcd->drvdata;
++
++    return aip31068_cmd(priv, AIP31068_CMD_HOME);
++}
++
++static int aip31068_clear_display(struct charlcd *lcd)
++{
++    struct aip31068_data *priv = lcd->drvdata;
++
++    return aip31068_cmd(priv, AIP31068_CMD_CLEAR);
++}
++
++static int aip31068_init_display(struct charlcd *lcd)
++{
++    struct aip31068_data *priv = lcd->drvdata;
++
++    mdelay(50);  /* wait for display to power up */
++
++    aip31068_cmd(priv, AIP31068_CMD_FUNCTION_SET);  /* 8-bit, 2 lines, 5x8 */
++    aip31068_cmd(priv, AIP31068_CMD_DISPLAY_ON);    /* display on */
++    aip31068_cmd(priv, AIP31068_CMD_CLEAR);         /* clear display */
++    aip31068_cmd(priv, AIP31068_CMD_ENTRY_MODE);    /* entry mode */
++
++    return 0;
++}
++
++static int aip31068_shift_cursor(struct charlcd *lcd, enum charlcd_shift_dir dir)
++{
++    struct aip31068_data *priv = lcd->drvdata;
++
++    if (dir == CHARLCD_SHIFT_LEFT)
++        return aip31068_cmd(priv, AIP31068_CMD_SHIFT_CUR_L);
++    else
++        return aip31068_cmd(priv, AIP31068_CMD_SHIFT_CUR_R);
++}
++
++static int aip31068_shift_display(struct charlcd *lcd, enum charlcd_shift_dir dir)
++{
++    struct aip31068_data *priv = lcd->drvdata;
++
++    if (dir == CHARLCD_SHIFT_LEFT)
++        return aip31068_cmd(priv, AIP31068_CMD_SHIFT_DISP_L);
++    else
++        return aip31068_cmd(priv, AIP31068_CMD_SHIFT_DISP_R);
++}
++
++static void aip31068_backlight(struct charlcd *lcd, enum charlcd_onoff on)
++{
++    /* AIP31068 does not support software backlight control */
++}
++
++static int aip31068_display(struct charlcd *lcd, enum charlcd_onoff on)
++{
++    struct aip31068_data *priv = lcd->drvdata;
++
++    if (on)
++        return aip31068_cmd(priv, AIP31068_CMD_DISPLAY_ON);
++    else
++        return aip31068_cmd(priv, AIP31068_CMD_DISPLAY_OFF);
++}
++
++static int aip31068_cursor(struct charlcd *lcd, enum charlcd_onoff on)
++{
++    struct aip31068_data *priv = lcd->drvdata;
++
++    if (on)
++        return aip31068_cmd(priv, AIP31068_CMD_CURSOR_ON);
++    else
++        return aip31068_cmd(priv, AIP31068_CMD_CURSOR_OFF);
++}
++
++static int aip31068_blink(struct charlcd *lcd, enum charlcd_onoff on)
++{
++    struct aip31068_data *priv = lcd->drvdata;
++
++    if (on)
++        return aip31068_cmd(priv, AIP31068_CMD_BLINK_ON);
++    else
++        return aip31068_cmd(priv, AIP31068_CMD_BLINK_OFF);
++}
++
++static int aip31068_fontsize(struct charlcd *lcd, enum charlcd_fontsize size)
++{
++    return 0;
++}
++
++static int aip31068_lines(struct charlcd *lcd, enum charlcd_lines lines)
++{
++    return 0;
++}
++
++static int aip31068_redefine_char(struct charlcd *lcd, char *esc)
++{
++    return 0;
++}
++
++static const struct charlcd_ops aip31068_ops = {
++    .print          = aip31068_print,
++    .backlight      = aip31068_backlight,
++    .gotoxy         = aip31068_gotoxy,
++    .home           = aip31068_home,
++    .clear_display  = aip31068_clear_display,
++    .init_display   = aip31068_init_display,
++    .shift_cursor   = aip31068_shift_cursor,
++    .shift_display  = aip31068_shift_display,
++    .display        = aip31068_display,
++    .cursor         = aip31068_cursor,
++    .blink          = aip31068_blink,
++    .fontsize       = aip31068_fontsize,
++    .lines          = aip31068_lines,
++    .redefine_char  = aip31068_redefine_char,
++};
++
++static int aip31068_i2c_probe(struct i2c_client *i2c)
++{
++    struct charlcd *lcd;
++    struct aip31068_data *priv;
++    int err;
++
++    priv = devm_kzalloc(&i2c->dev, sizeof(*priv), GFP_KERNEL);
++    if (!priv)
++        return -ENOMEM;
++
++    lcd = charlcd_alloc(0);
++    if (!lcd)
++        return -ENOMEM;
++
++    priv->i2c = i2c;
++    priv->charlcd = lcd;
++    lcd->drvdata = priv;
++
++    err = device_property_read_u32(&i2c->dev, "display-height-chars",
++            &lcd->height);
++    if (err)
++        goto fail;
++
++    err = device_property_read_u32(&i2c->dev, "display-width-chars",
++            &lcd->width);
++    if (err)
++        goto fail;
++
++    lcd->ops = &aip31068_ops;
++
++    err = charlcd_register(lcd);
++    if (err)
++        goto fail;
++
++    i2c_set_clientdata(i2c, priv);
++    dev_info(&i2c->dev, "AIP31068 LCD display registered\n");
++    return 0;
++
++fail:
++    charlcd_free(lcd);
++    return err;
++}
++
++static void aip31068_i2c_remove(struct i2c_client *i2c)
++{
++    struct aip31068_data *priv = i2c_get_clientdata(i2c);
++
++    charlcd_unregister(priv->charlcd);
++    charlcd_free(priv->charlcd);
++}
++
++static const struct i2c_device_id aip31068_i2c_id[] = {
++    { "aip31068", 0 },
++    { }
++};
++MODULE_DEVICE_TABLE(i2c, aip31068_i2c_id);
++
++static const struct of_device_id aip31068_of_table[] = {
++    { .compatible = "aip,aip31068" },
++    { }
++};
++MODULE_DEVICE_TABLE(of, aip31068_of_table);
++
++static struct i2c_driver aip31068_i2c_driver = {
++    .driver = {
++        .name = "aip31068",
++        .of_match_table = aip31068_of_table,
++    },
++    .probe  = aip31068_i2c_probe,
++    .remove = aip31068_i2c_remove,
++    .id_table = aip31068_i2c_id,
++};
++module_i2c_driver(aip31068_i2c_driver);
++
++MODULE_DESCRIPTION("AIP31068L I2C LCD driver");
++MODULE_AUTHOR("Valentijn");
++MODULE_LICENSE("GPL");

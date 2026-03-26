@@ -19,6 +19,18 @@ menuconfig:
 linux-menuconfig:
 	$(BR2_MAKE) linux-menuconfig
 
+linux-dirclean:
+	$(BR2_MAKE) linux-dirclean
+
+linux-rebuild:
+	$(BR2_MAKE) linux-rebuild
+
+uboot-dirclean:
+	$(BR2_MAKE) uboot-dirclean
+
+uboot-rebuild:
+	$(BR2_MAKE) uboot-rebuild
+
 saveconfig:
 	$(BR2_MAKE) savedefconfig BR2_DEFCONFIG=$(BR2_EXTERNAL)/configs/$(DEFCONFIG)
 

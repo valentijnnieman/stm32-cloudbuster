@@ -1,0 +1,20 @@
+#!/bin/sh
+
+case "$1" in
+    start)
+        echo "Setting up tmpfs..."
+
+        # Mount tmpfs for /var/run and /var/log
+        mount -t tmpfs tmpfs /var/run -o size=1M
+        mount -t tmpfs tmpfs /var/log -o size=4M
+        mkdir -p /var/run/sshd
+        mkdir -p /var/log
+
+        # Set up /etc/ssh on tmpfs
+        mount -t tmpfs tmpfs /tmp -o size=4M
+        mkdir -p /tmp/ssh
+        cp /etc/ssh/sshd_config /tmp/ssh/
+        mount --bind /tmp/ssh /etc/ssh
+        ssh-keygen -A
+        ;;
+esac
