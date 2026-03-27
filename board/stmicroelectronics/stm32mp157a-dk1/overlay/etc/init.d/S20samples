@@ -1,0 +1,12 @@
+#!/bin/sh
+
+case "$1" in
+    start)
+        echo "Mounting samples partition..."
+        mkdir -p /mnt/samples
+        mount -t vfat /dev/mmcblk0p5 /mnt/samples -o ro,utf8
+        ;;
+    stop)
+        umount /mnt/samples
+        ;;
+esac

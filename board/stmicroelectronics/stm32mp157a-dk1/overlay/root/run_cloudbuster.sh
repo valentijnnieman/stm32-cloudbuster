@@ -1,7 +1,7 @@
 #!/bin/sh
 
 BINARY=/root/cloudbuster
-SAMPLES=/root/samples
+SAMPLES=/mnt/samples
 MIDI=1
 RESTART_DELAY=2
 
